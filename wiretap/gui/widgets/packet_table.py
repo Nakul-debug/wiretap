@@ -1,0 +1,2 @@
+"""Packet table widget."""
+pass

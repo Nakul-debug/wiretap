@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk find *)",
+      "Bash(rtk ls *)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(rtk --version)",
+      "Bash(claude --version)",
+      "Bash(claude plugin *)",
+      "Bash(curl -sL https://raw.githubusercontent.com/ayghri/i-have-adhd/main/AGENTS.md)",
+      "Bash(curl -sL https://raw.githubusercontent.com/ayghri/i-have-adhd/main/INSTALL.md)",
+      "Bash(python3 -c \"import PyQt6; print\\('PyQt6', PyQt6.__file__\\)\")"
+    ]
+  }
+}

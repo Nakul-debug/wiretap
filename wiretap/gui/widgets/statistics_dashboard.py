@@ -1,0 +1,2 @@
+"""Statistics dashboard widget."""
+pass

@@ -1,0 +1,2 @@
+"""Pytest configuration."""
+pass
