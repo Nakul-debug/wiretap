@@ -1,9 +1,9 @@
-# NetScope — Network Protocol Analyzer
+# wiretap — Network Protocol Analyzer
 ## Step-by-Step Development Plan
 
 ## 1. Project Overview
 
-**NetScope** is a lightweight, educational desktop network protocol analyzer that captures, decodes, and analyzes network packets in real time. It provides detailed inspection of Ethernet, ARP, IPv4, IPv6, TCP, UDP, ICMP, DNS, and HTTP traffic while presenting protocol information in a structured and beginner-friendly manner.
+**wiretap** is a lightweight, educational desktop network protocol analyzer that captures, decodes, and analyzes network packets in real time. It provides detailed inspection of Ethernet, ARP, IPv4, IPv6, TCP, UDP, ICMP, DNS, and HTTP traffic while presenting protocol information in a structured and beginner-friendly manner.
 
 The project is designed to serve two purposes:
 
@@ -909,7 +909,7 @@ Provide configurable limits for:
 
 ## 5.53 Phase 6 Milestone
 
-NetScope should remain responsive and stable during extended captures and high traffic rates, with clear feedback when resource limits are reached.
+wiretap should remain responsive and stable during extended captures and high traffic rates, with clear feedback when resource limits are reached.
 
 ---
 
@@ -1061,7 +1061,7 @@ Use `pytest-qt` where practical, but prioritize manual GUI testing for layout, r
 
 ## 8. Security, Privacy, and Ethical Considerations
 
-Because NetScope captures network traffic, the project must be designed responsibly:
+Because wiretap captures network traffic, the project must be designed responsibly:
 
 1. **Capture only with permission.** Clearly document that users must have authorization to monitor a network.
 2. **Avoid storing payloads by default.** Treat packet contents as sensitive.
@@ -1124,6 +1124,6 @@ The project is considered complete for its initial release when all of the follo
 
 ## 11. Summary
 
-NetScope should be built as a modular Python application with a clear separation between capture, decoding, analysis, storage, and presentation. Start with a small, reliable MVP: capture packets, decode the most common protocols, and display them clearly. Then add flow analysis, TCP reconstruction, RTT/retransmission metrics, and visualization. Finally, harden the application, add offline analysis and export features, document the system thoroughly, and package it for end users.
+wiretap should be built as a modular Python application with a clear separation between capture, decoding, analysis, storage, and presentation. Start with a small, reliable MVP: capture packets, decode the most common protocols, and display them clearly. Then add flow analysis, TCP reconstruction, RTT/retransmission metrics, and visualization. Finally, harden the application, add offline analysis and export features, document the system thoroughly, and package it for end users.
 
 The most important engineering rule throughout the project is to keep the packet-processing pipeline deterministic and testable: every raw packet should produce the same decoded result regardless of whether it came from a live interface or a saved PCAP file.
