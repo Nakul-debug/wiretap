@@ -110,6 +110,8 @@ class FlowTableModel(QAbstractTableModel):
 
     def clear(self):
         """Clear all flows."""
+        if not self._flow_keys:
+            return
         self.beginRemoveRows(QModelIndex(), 0, len(self._flow_keys) - 1)
         self._flows.clear()
         self._flow_keys.clear()

@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PyQt6.QtGui import QColor, QBrush
+from PyQt6.QtGui import QColor
 from wiretap.models.packet import Packet
 from typing import List
 
@@ -17,26 +17,6 @@ class PacketTableModel(QAbstractTableModel):
 
     def columnCount(self, parent=QModelIndex()) -> int:
         return len(self.headers)
-
-    def data(self, index: QModelIndex, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid():
-            return None
-        row = index.row()
-        col = index.column()
-        packet = self._packets[row]
-        if role == Qt.ItemDataRole.DisplayRole:
-            return self._get_display_data(packet, col)
-        elif role == Qt.ItemDataRole.TextAlignmentRole:
-            if col in (0, 4, 5):  # No., Protocol, Length
-                return Qt.AlignmentFlag.AlignCenter
-            return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        elif role == Qt.ItemDataRole.BackgroundRole:
-            # Alternate row colors for better readability
-            if row % 2 == 0:
-                return QColor(Qt.GlobalColor.white)
-            else:
-                return QColor(240, 240, 255)  # very light blue
-        return None
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
@@ -119,11 +99,10 @@ class PacketTableModel(QAbstractTableModel):
             from datetime import datetime
             time_str = datetime.fromtimestamp(time_str).strftime("%H:%M:%S.%f")[:-3]
 
-        # Packet number (just find the packet's position in the model)
-        no = str(self._packets.index(packet) + 1)
-
         if col == 0:  # No.
-            return no
+            # The view already knows the row; deriving it here was O(n) and
+            # ambiguous for repeated packet objects.  This is filled in data().
+            return ""
         elif col == 1:  # Time
             return time_str
         elif col == 2:  # Source
@@ -144,6 +123,23 @@ class PacketTableModel(QAbstractTableModel):
         self._packets.append(packet)
         self.endInsertRows()
 
+    def data(self, index: QModelIndex, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+        row, col = index.row(), index.column()
+        packet = self._packets[row]
+        if role == Qt.ItemDataRole.DisplayRole:
+            return str(row + 1) if col == 0 else self._get_display_data(packet, col)
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            return (Qt.AlignmentFlag.AlignCenter if col in (0, 4, 5)
+                    else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        if role == Qt.ItemDataRole.BackgroundRole:
+            return QColor("#0d1626") if row % 2 == 0 else QColor("#101b2e")
+        if role == Qt.ItemDataRole.ForegroundRole and col == 4:
+            protocol_colours = {"TCP": "#7dd3fc", "UDP": "#c4b5fd", "ICMP": "#fbbf24", "ARP": "#fb923c", "DNS": "#5eead4", "HTTP": "#86efac"}
+            return QColor(protocol_colours.get(self._get_display_data(packet, col), "#cbd5e1"))
+        return None
+
     def packet_at(self, row: int) -> Packet:
         """Return packet at given row."""
         if 0 <= row < len(self._packets):
@@ -152,6 +148,8 @@ class PacketTableModel(QAbstractTableModel):
 
     def clear(self):
         """Clear all packets."""
+        if not self._packets:
+            return
         self.beginRemoveRows(QModelIndex(), 0, len(self._packets) - 1)
         self._packets.clear()
         self.endRemoveRows()

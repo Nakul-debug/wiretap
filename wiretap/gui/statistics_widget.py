@@ -1,155 +1,138 @@
-from PyQt6.QtWidgets import QWidget, QGridLayout, QLabel, QFrame
-from PyQt6.QtCore import Qt, QTimer
-from wiretap.models.packet import Packet
-from typing import List
+"""A lightweight statistics dashboard derived from the existing packet list."""
+
 import time
+from collections import Counter
+from typing import List
+
+from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import QFrame, QGridLayout, QLabel, QProgressBar, QScrollArea, QVBoxLayout, QWidget
+
+from wiretap.models.packet import Packet
 
 
-class StatisticsWidget(QFrame):
-    """Widget to display capture statistics."""
+def packet_protocol(packet: Packet) -> str:
+    ip_layer = packet.get_layer("IPv4")
+    if ip_layer:
+        return {1: "ICMP", 6: "TCP", 17: "UDP"}.get(ip_layer.get_field("protocol"), "Other")
+    if packet.get_layer("ARP"):
+        return "ARP"
+    return "Other"
+
+
+class StatisticsWidget(QScrollArea):
+    """Scrollable overview of metrics available directly from captured packets."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # Remove setFrameStyle to let stylesheet handle appearance
-        self.layout = QGridLayout(self)
-        self.layout.setSpacing(8)  # Add spacing between items
         self._packets: List[Packet] = []
         self._start_time = time.time()
-        self._last_update_time = self._start_time
+        self.setWidgetResizable(True)
+        root = QWidget()
+        root.setObjectName("appRoot")
+        self.setWidget(root)
+        self.layout = QVBoxLayout(root)
+        self.layout.setContentsMargins(14, 12, 14, 14)
+        self.layout.setSpacing(12)
         self._init_ui()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.update_display)
-        self._timer.start(1000)  # Update every second
+        self._timer.start(1000)
+
+    def _panel(self, title: str) -> tuple[QFrame, QVBoxLayout]:
+        panel = QFrame()
+        panel.setObjectName("panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 12, 14, 14)
+        title_label = QLabel(title)
+        title_label.setObjectName("sectionTitle")
+        layout.addWidget(title_label)
+        return panel, layout
 
     def _init_ui(self):
-        # Create labels
-        self.labels = {}
-        row = 0
-        self.layout.addWidget(QLabel("Total Packets:"), row, 0)
-        self.labels['total_packets'] = QLabel("0")
-        self.layout.addWidget(self.labels['total_packets'], row, 1)
-        row += 1
-        self.layout.addWidget(QLabel("Total Bytes:"), row, 0)
-        self.labels['total_bytes'] = QLabel("0")
-        self.layout.addWidget(self.labels['total_bytes'], row, 1)
-        row += 1
-        self.layout.addWidget(QLabel("Packets/sec:"), row, 0)
-        self.labels['pps'] = QLabel("0.00")
-        self.layout.addWidget(self.labels['pps'], row, 1)
-        row += 1
-        self.layout.addWidget(QLabel("Bytes/sec:"), row, 0)
-        self.labels['bps'] = QLabel("0.00")
-        self.layout.addWidget(self.labels['bps'], row, 1)
-        row += 1
-        self.layout.addWidget(QLabel("Protocol Distribution:"), row, 0, 1, 2)
-        row += 1
-        self.protocol_label = QLabel("")
-        self.protocol_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.layout.addWidget(self.protocol_label, row, 0, 1, 2)
-        row += 1
-        self.layout.addWidget(QLabel("Top Talkers (by packets):"), row, 0, 1, 2)
-        row += 1
-        self.talkers_label = QLabel("")
-        self.talkers_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.layout.addWidget(self.talkers_label, row, 0, 1, 2)
-        row += 1
-        self.layout.addWidget(QLabel("Top Conversations:"), row, 0, 1, 2)
-        row += 1
-        self.conversations_label = QLabel("")
-        self.conversations_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.layout.addWidget(self.conversations_label, row, 0, 1, 2)
-        row += 1
+        heading = QLabel("Capture statistics")
+        heading.setObjectName("sectionTitle")
+        self.layout.addWidget(heading)
+        self.empty = QLabel("Capture some traffic to generate statistics.")
+        self.empty.setObjectName("emptyDescription")
+        self.layout.addWidget(self.empty)
+
+        summary, summary_layout = self._panel("Capture summary")
+        grid = QGridLayout()
+        self.summary_labels = {}
+        for index, (key, label) in enumerate((("packets", "Packets"), ("bytes", "Bytes"), ("pps", "Capture rate"), ("protocols", "Protocols"))):
+            name = QLabel(label.upper())
+            name.setObjectName("metricLabel")
+            value = QLabel("0")
+            value.setObjectName("metricValue")
+            grid.addWidget(name, index // 2, (index % 2) * 2)
+            grid.addWidget(value, index // 2, (index % 2) * 2 + 1)
+            self.summary_labels[key] = value
+        summary_layout.addLayout(grid)
+        self.layout.addWidget(summary)
+
+        distribution, self.distribution_layout = self._panel("Protocol distribution")
+        self.layout.addWidget(distribution)
+        talkers, self.talkers_layout = self._panel("Top talkers")
+        self.layout.addWidget(talkers)
+        self.layout.addStretch(1)
+
+    @staticmethod
+    def _clear_rows(layout: QVBoxLayout):
+        while layout.count() > 1:
+            item = layout.takeAt(1)
+            if item.widget():
+                item.widget().deleteLater()
 
     def set_packets(self, packets: List[Packet]):
-        """Set the list of packets to compute statistics from."""
-        self._packets = packets
+        self._packets = list(packets)
+        self._start_time = time.time()
         self._update_stats()
 
     def add_packet(self, packet: Packet):
         self._packets.append(packet)
 
     def _update_stats(self):
-        """Compute statistics from the current packet list."""
-        if not self._packets:
-            return
-        total_packets = len(self._packets)
-        total_bytes = sum(len(p.raw_bytes) for p in self._packets)
-        now = time.time()
-        elapsed = now - self._start_time
-        if elapsed > 0:
-            pps = total_packets / elapsed
-            bps = total_bytes / elapsed
+        total = len(self._packets)
+        self.empty.setVisible(total == 0)
+        total_bytes = sum(len(packet.raw_bytes) for packet in self._packets)
+        elapsed = max(time.time() - self._start_time, 0.001)
+        counts = Counter(packet_protocol(packet) for packet in self._packets)
+        self.summary_labels["packets"].setText(f"{total:,}")
+        self.summary_labels["bytes"].setText(f"{total_bytes:,}")
+        self.summary_labels["pps"].setText(f"{total / elapsed:.1f} pkt/s" if total else "0 pkt/s")
+        self.summary_labels["protocols"].setText(str(len(counts)))
+
+        self._clear_rows(self.distribution_layout)
+        if counts:
+            for protocol, count in counts.most_common():
+                row = QWidget()
+                row_layout = QGridLayout(row)
+                row_layout.setContentsMargins(0, 2, 0, 2)
+                label = QLabel(protocol)
+                value = QLabel(f"{count:,}  ({count / total:.0%})")
+                value.setObjectName("muted")
+                bar = QProgressBar()
+                bar.setTextVisible(False)
+                bar.setRange(0, total)
+                bar.setValue(count)
+                row_layout.addWidget(label, 0, 0)
+                row_layout.addWidget(value, 0, 1)
+                row_layout.addWidget(bar, 1, 0, 1, 2)
+                self.distribution_layout.addWidget(row)
+
+        self._clear_rows(self.talkers_layout)
+        endpoints = Counter()
+        for packet in self._packets:
+            ip = packet.get_layer("IPv4")
+            if ip:
+                endpoints.update((ip.get_field("src_addr", "?"), ip.get_field("dst_addr", "?")))
+        if endpoints:
+            for address, count in endpoints.most_common(5):
+                self.talkers_layout.addWidget(QLabel(f"{address}   ·   {count:,} packets"))
         else:
-            pps = 0.0
-            bps = 0.0
-        # Protocol distribution
-        proto_counts = {}
-        for p in self._packets:
-            # Determine protocol from packet layers (simplified: first layer after Ethernet?)
-            proto = "Unknown"
-            ip_layer = p.get_layer("IPv4")
-            if ip_layer:
-                proto_num = ip_layer.get_field("protocol", "?")
-                proto_map = {1: "ICMP", 6: "TCP", 17: "UDP"}
-                proto = proto_map.get(proto_num, str(proto_num))
-            else:
-                arp_layer = p.get_layer("ARP")
-                if arp_layer:
-                    proto = "ARP"
-                else:
-                    # Check for other layers
-                    if p.get_layer("TCP"):
-                        proto = "TCP"
-                    elif p.get_layer("UDP"):
-                        proto = "UDP"
-                    elif p.get_layer("ICMP"):
-                        proto = "ICMP"
-            proto_counts[proto] = proto_counts.get(proto, 0) + 1
-        # Sort protocols by count
-        sorted_proto = sorted(proto_counts.items(), key=lambda x: x[1], reverse=True)
-        proto_text = ", ".join([f"{p}: {c}" for p, c in sorted_proto])
-        # Top talkers (by source IP)
-        src_counts = {}
-        dst_counts = {}
-        for p in self._packets:
-            ip_layer = p.get_layer("IPv4")
-            if ip_layer:
-                src = ip_layer.get_field("src_addr", "?")
-                dst = ip_layer.get_field("dst_addr", "?")
-                src_counts[src] = src_counts.get(src, 0) + 1
-                dst_counts[dst] = dst_counts.get(dst, 0) + 1
-        # Combine src and dst for talkers
-        talker_counts = {}
-        for ip, count in src_counts.items():
-            talker_counts[ip] = talker_counts.get(ip, 0) + count
-        for ip, count in dst_counts.items():
-            talker_counts[ip] = talker_counts.get(ip, 0) + count
-        top_talkers = sorted(talker_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-        talkers_text = ", ".join([f"{ip}: {count}" for ip, count in top_talkers])
-        # Top conversations (pair of IPs)
-        conv_counts = {}
-        for p in self._packets:
-            ip_layer = p.get_layer("IPv4")
-            if ip_layer:
-                src = ip_layer.get_field("src_addr", "?")
-                dst = ip_layer.get_field("dst_addr", "?")
-                # Ensure consistent ordering
-                if src < dst:
-                    key = (src, dst)
-                else:
-                    key = (dst, src)
-                conv_counts[key] = conv_counts.get(key, 0) + 1
-        top_convs = sorted(conv_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-        convs_text = ", ".join([f"{a} <-> {b}: {count}" for (a, b), count in top_convs])
-        # Update labels
-        self.labels['total_packets'].setText(f"{total_packets:,}")
-        self.labels['total_bytes'].setText(f"{total_bytes:,}")
-        self.labels['pps'].setText(f"{pps:.2f}")
-        self.labels['bps'].setText(f"{bps:.2f}")
-        self.protocol_label.setText(proto_text)
-        self.talkers_label.setText(talkers_text)
-        self.conversations_label.setText(convs_text)
+            message = QLabel("No IP conversations detected yet.")
+            message.setObjectName("muted")
+            self.talkers_layout.addWidget(message)
 
     def update_display(self):
-        """Update the display (called by timer)."""
         self._update_stats()

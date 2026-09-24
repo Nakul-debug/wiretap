@@ -2,9 +2,9 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QToolBar,
     QComboBox, QPushButton, QLineEdit, QLabel, QStatusBar,
     QTableView, QTreeView, QSplitter, QMessageBox, QSizePolicy,
-    QTabWidget, QFileDialog, QStyle
+    QTabWidget, QFileDialog, QStyle, QHeaderView, QMenu, QFrame
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer
 from PyQt6.QtGui import QAction, QFont, QPalette, QColor
 import sys
 import time
@@ -24,6 +24,7 @@ from wiretap.decoders.icmp import ICMPDecoder
 from wiretap.decoders.dns import DNSDecoder
 from wiretap.decoders.http import HTTPDecoder
 from wiretap.decoders.arp import ARPDecoder
+from wiretap.gui.theme import apply_theme
 
 
 class CaptureWorker(QObject):
@@ -154,9 +155,8 @@ class CaptureWorker(QObject):
                                 if icmp_decoder.supports(transport_payload):
                                     pkt.add_layer(icmp_decoder.decode(transport_payload))
 
-                self.packet_received.emit(pkt)
-                # Optionally decode packet here or leave to GUI
-                # For now, we emit raw packet; decoding can be done in GUI
+                # The GUI owns all display/model updates, so emit each decoded
+                # packet exactly once.
                 self.packet_received.emit(pkt)
             except Exception as e:
                 self.error.emit(f"Error processing packet: {e}")
@@ -225,9 +225,14 @@ class MainWindow(QMainWindow):
         self._setup_connections()
         self._populate_interface_combo()
         self.apply_modern_style()
+        self.summary_timer = QTimer(self)
+        self.summary_timer.timeout.connect(self._update_packet_count)
+        self.summary_timer.start(1000)
 
     def apply_modern_style(self):
         """Apply a modern dark theme to the application."""
+        apply_theme()
+        return
         # Set Fusion style for better cross-platform consistency
         from PyQt6.QtWidgets import QApplication
         QApplication.setStyle("Fusion")
@@ -574,106 +579,122 @@ class MainWindow(QMainWindow):
     def _setup_ui(self):
         """Create the user interface."""
         central_widget = QWidget()
+        central_widget.setObjectName("appRoot")
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(12)
 
-        # Toolbar
-        toolbar = QToolBar()
-        toolbar.setMovable(False)
-        self.addToolBar(toolbar)
+        header = QFrame()
+        header.setObjectName("header")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(16, 10, 16, 10)
+        logo = QLabel("WT")
+        logo.setObjectName("logoMark")
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_layout.addWidget(logo)
+        identity = QVBoxLayout()
+        brand = QLabel("WireTap")
+        brand.setObjectName("brand")
+        subtitle = QLabel("Network Protocol Analyzer")
+        subtitle.setObjectName("subtitle")
+        identity.addWidget(brand)
+        identity.addWidget(subtitle)
+        header_layout.addLayout(identity)
+        header_layout.addStretch(1)
+        self.status_dot = QLabel("●")
+        self.status_dot.setObjectName("statusDot")
+        self.status_text = QLabel("Capture stopped")
+        self.status_text.setObjectName("statusText")
+        header_layout.addWidget(self.status_dot)
+        header_layout.addWidget(self.status_text)
+        self.start_button = QPushButton("Start Capture")
+        self.start_button.setObjectName("primaryButton")
+        self.stop_button = QPushButton("Stop Capture")
+        self.stop_button.setObjectName("dangerButton")
+        self.stop_button.setEnabled(False)
+        self.more_button = QPushButton("More")
+        header_layout.addWidget(self.start_button)
+        header_layout.addWidget(self.stop_button)
+        header_layout.addWidget(self.more_button)
+        layout.addWidget(header)
 
-        # Interface selector
+        controls = QFrame()
+        controls.setObjectName("controlBar")
+        controls_layout = QHBoxLayout(controls)
+        controls_layout.setContentsMargins(12, 10, 12, 10)
+        controls_layout.setSpacing(8)
+        controls_layout.addWidget(QLabel("Interface"))
         self.interface_combo = QComboBox()
-        self.interface_combo.setMinimumWidth(200)
-        toolbar.addWidget(QLabel("Interface: "))
-        toolbar.addWidget(self.interface_combo)
-
-        # Filter
-        toolbar.addSeparator()
-        toolbar.addWidget(QLabel("Filter: "))
+        self.interface_combo.setMinimumWidth(260)
+        controls_layout.addWidget(self.interface_combo)
+        controls_layout.addWidget(QLabel("BPF filter"))
         self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("e.g., tcp port 80")
-        self.filter_edit.setMaximumWidth(200)
-        toolbar.addWidget(self.filter_edit)
+        self.filter_edit.setPlaceholderText("Filter packets (e.g. tcp, udp, port 53, icmp)")
+        controls_layout.addWidget(self.filter_edit, 1)
+        self.clear_button = QPushButton("Clear packets")
+        self.export_button = QPushButton("Export")
+        controls_layout.addWidget(self.clear_button)
+        controls_layout.addWidget(self.export_button)
+        layout.addWidget(controls)
 
-        # Start/Stop buttons
+        cards = QHBoxLayout()
+        self.metric_values = {}
+        for key, label in (("packets", "PACKETS"), ("flows", "FLOWS"), ("bytes", "BYTES"), ("rate", "CAPTURE RATE")):
+            card = QFrame()
+            card.setObjectName("metricCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(14, 10, 14, 10)
+            name = QLabel(label)
+            name.setObjectName("metricLabel")
+            value = QLabel("0" if key != "rate" else "0 pkt/s")
+            value.setObjectName("metricValue")
+            card_layout.addWidget(name)
+            card_layout.addWidget(value)
+            cards.addWidget(card, 1)
+            self.metric_values[key] = value
+        layout.addLayout(cards)
+
         self.start_action = QAction("Start", self)
-        self.start_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-        toolbar.addAction(self.start_action)
         self.stop_action = QAction("Stop", self)
-        self.stop_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
         self.stop_action.setEnabled(False)
-        toolbar.addAction(self.stop_action)
-
-        # Clear button
-        clear_action = QAction("Clear", self)
-        clear_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
-        toolbar.addAction(clear_action)
-        toolbar.addSeparator()
-
-        # Export/Import actions
         self.export_action = QAction("Export PCAP", self)
-        self.export_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
-        toolbar.addAction(self.export_action)
-        
         self.export_csv_action = QAction("Export CSV", self)
-        self.export_csv_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
-        toolbar.addAction(self.export_csv_action)
-        
         self.export_json_action = QAction("Export JSON", self)
-        self.export_json_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
-        toolbar.addAction(self.export_json_action)
-        
         self.report_action = QAction("Generate Report", self)
-        self.report_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
-        toolbar.addAction(self.report_action)
-        
         self.import_action = QAction("Import", self)
-        self.import_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
-        toolbar.addAction(self.import_action)
-        
         self.save_db_action = QAction("Save to DB", self)
-        self.save_db_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DriveFDIcon))
-        toolbar.addAction(self.save_db_action)
-        
         self.load_db_action = QAction("Load from DB", self)
-        self.load_db_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DriveHDIcon))
-        toolbar.addAction(self.load_db_action)
-        
-        toolbar.addSeparator()
-        
-        # Packet count label
-        self.packet_count_label = QLabel("Packets: 0")
-        toolbar.addWidget(self.packet_count_label)
 
-        # Tab widget
         self.tab_widget = QTabWidget()
         layout.addWidget(self.tab_widget)
-
-        # Packet view tab
-        packet_splitter = QSplitter(Qt.Orientation.Vertical)
+        packet_splitter = QSplitter(Qt.Orientation.Horizontal)
         packet_splitter.addWidget(self.packet_table)
         packet_splitter.addWidget(self.packet_details)
-        packet_splitter.setSizes([400, 300])
+        packet_splitter.setStretchFactor(0, 4)
+        packet_splitter.setStretchFactor(1, 2)
+        packet_splitter.setSizes([900, 420])
         self.packet_view_widget.setLayout(QVBoxLayout())
+        self.packet_view_widget.layout().setContentsMargins(0, 0, 0, 0)
         self.packet_view_widget.layout().addWidget(packet_splitter)
-        self.tab_widget.addTab(self.packet_view_widget, "Packets")
-
-        # Flows tab
+        self.tab_widget.addTab(self.packet_view_widget, "Live Capture")
         self.tab_widget.addTab(self.flow_table_view, "Flows")
-
-        # Statistics tab
         self.tab_widget.addTab(self.statistics_widget, "Statistics")
 
-        # Status bar
+        self._configure_tables()
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready")
+        self.status_bar.showMessage("Ready to capture")
 
     def _setup_connections(self):
         """Connect signals and slots."""
         self.start_action.triggered.connect(self.start_capture)
         self.stop_action.triggered.connect(self.stop_capture)
+        self.start_button.clicked.connect(self.start_capture)
+        self.stop_button.clicked.connect(self.stop_capture)
+        self.clear_button.clicked.connect(self.clear_packets)
+        self.export_button.clicked.connect(self._show_export_menu)
+        self.more_button.clicked.connect(self._show_more_menu)
         self.interface_combo.currentIndexChanged.connect(self._on_interface_changed)
         self.filter_edit.returnPressed.connect(self._on_filter_changed)
         self.export_action.triggered.connect(self.export_packets)
@@ -685,6 +706,56 @@ class MainWindow(QMainWindow):
         self.load_db_action.triggered.connect(self.load_from_database)
         self.packet_table.selectionModel().selectionChanged.connect(self._on_packet_selected)
         self.packet_model.layoutChanged.connect(self._update_packet_count)
+
+    def _configure_tables(self):
+        """Apply responsive view settings without changing either data model."""
+        for table in (self.packet_table, self.flow_table_view):
+            table.setAlternatingRowColors(True)
+            table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+            table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+            table.setShowGrid(False)
+            table.verticalHeader().setVisible(False)
+            table.verticalHeader().setDefaultSectionSize(34)
+            table.horizontalHeader().setStretchLastSection(True)
+        packet_header = self.packet_table.horizontalHeader()
+        packet_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        packet_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        packet_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        packet_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        packet_header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        packet_header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        packet_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        self.flow_table_view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+    def _show_export_menu(self):
+        menu = QMenu(self)
+        menu.addAction(self.export_action)
+        menu.addAction(self.export_csv_action)
+        menu.addAction(self.export_json_action)
+        menu.addSeparator()
+        menu.addAction(self.report_action)
+        menu.addAction(self.save_db_action)
+        menu.exec(self.export_button.mapToGlobal(self.export_button.rect().bottomLeft()))
+
+    def _show_more_menu(self):
+        menu = QMenu(self)
+        menu.addAction(self.import_action)
+        menu.addAction(self.load_db_action)
+        menu.addSeparator()
+        menu.addAction(self.save_db_action)
+        menu.exec(self.more_button.mapToGlobal(self.more_button.rect().bottomLeft()))
+
+    def clear_packets(self):
+        """Clear displayed capture data while leaving capture state untouched."""
+        self.packets.clear()
+        self.packet_model.clear()
+        self.flows.clear()
+        self.flow_model.clear()
+        self.statistics_widget.set_packets(self.packets)
+        self.current_packet = None
+        self.packet_details.setPacket(None)
+        self._update_packet_count()
+        self.status_bar.showMessage("Packets cleared")
 
     def _populate_interface_combo(self):
         """Populate the interface combo box with available interfaces."""
@@ -1081,8 +1152,14 @@ class MainWindow(QMainWindow):
         # Disable UI during capture
         self.start_action.setEnabled(False)
         self.stop_action.setEnabled(True)
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
         self.interface_combo.setEnabled(False)
         self.filter_edit.setEnabled(False)
+        self.status_dot.setProperty("capturing", True)
+        self.status_dot.style().unpolish(self.status_dot)
+        self.status_dot.style().polish(self.status_dot)
+        self.status_text.setText("Capturing")
         self.status_bar.showMessage(f"Capturing on {iface}...")
 
         # Create and start capture worker in a thread
@@ -1103,8 +1180,14 @@ class MainWindow(QMainWindow):
             self.capture_worker.stop()
         self.start_action.setEnabled(True)
         self.stop_action.setEnabled(False)
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
         self.interface_combo.setEnabled(True)
         self.filter_edit.setEnabled(True)
+        self.status_dot.setProperty("capturing", False)
+        self.status_dot.style().unpolish(self.status_dot)
+        self.status_dot.style().polish(self.status_dot)
+        self.status_text.setText("Capture stopped")
         self.status_bar.showMessage("Capture stopped")
 
     def _on_packet_received(self, packet: Packet):
@@ -1113,12 +1196,20 @@ class MainWindow(QMainWindow):
         self.packet_model.add_packet(packet)
         self.statistics_widget.add_packet(packet)
         self._track_flow(packet)
+        self._update_packet_count()
         # Optionally auto-scroll to the latest packet
         self.packet_table.scrollToBottom()
 
     def _on_capture_error(self, error_msg: str):
         """Handle capture error."""
-        QMessageBox.critical(self, "Capture Error", error_msg)
+        QMessageBox.critical(
+            self,
+            "Capture could not be started",
+            "WireTap could not start the selected capture interface.\n\n"
+            "Npcap may not be installed, the interface may no longer be available, "
+            "or the filter may be invalid. Verify those items and try again.\n\n"
+            f"Technical details: {error_msg}",
+        )
         self.stop_capture()
 
     def _on_packet_selected(self, selected, deselected):
@@ -1136,7 +1227,12 @@ class MainWindow(QMainWindow):
     def _update_packet_count(self):
         """Update the packet count label."""
         count = len(self.packets)
-        self.packet_count_label.setText(f"Packets: {count}")
+        total_bytes = sum(len(packet.raw_bytes) for packet in self.packets)
+        elapsed = max(time.time() - self.statistics_widget._start_time, 0.001)
+        self.metric_values["packets"].setText(f"{count:,}")
+        self.metric_values["flows"].setText(f"{len(self.flows):,}")
+        self.metric_values["bytes"].setText(f"{total_bytes:,}")
+        self.metric_values["rate"].setText(f"{count / elapsed:.1f} pkt/s" if count else "0 pkt/s")
 
 
     def _track_flow(self, packet: Packet):
