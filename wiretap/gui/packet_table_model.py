@@ -119,8 +119,8 @@ class PacketTableModel(QAbstractTableModel):
             from datetime import datetime
             time_str = datetime.fromtimestamp(time_str).strftime("%H:%M:%S.%f")[:-3]
 
-        # Packet number (just row index + 1)
-        no = str(row + 1)
+        # Packet number (just find the packet's position in the model)
+        no = str(self._packets.index(packet) + 1)
 
         if col == 0:  # No.
             return no

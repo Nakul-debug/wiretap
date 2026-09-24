@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt6.QtGui import QAction, QFont, QPalette, QColor
 import sys
+import time
 from datetime import datetime
 from wiretap.gui.packet_table_model import PacketTableModel
 from wiretap.gui.packet_details_view import PacketDetailsView
@@ -78,7 +79,7 @@ class CaptureWorker(QObject):
             self.sniffer.start()
             while self._is_running:
                 # Sleep briefly to allow checking _is_running
-                self.msleep(100)
+                time.sleep(0.1)
             self.sniffer.stop()
         except Exception as e:
             self.error.emit(f"Failed to start capture: {e}")
@@ -1046,7 +1047,7 @@ class MainWindow(QMainWindow):
         self.packet_count_label.setText(f"Packets: {count}")
 
 
-def _track_flow(self, packet: Packet):
+    def _track_flow(self, packet: Packet):
         """Update flow statistics from a packet."""
         # Extract IPv4 layer
         ip_layer = packet.get_layer("IPv4")
