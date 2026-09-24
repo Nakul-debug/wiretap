@@ -59,10 +59,102 @@ class CaptureWorker(QObject):
                 return
             try:
                 # Convert Scapy packet to our Packet object
+                raw_bytes = bytes(scapy_pkt)
+
                 pkt = Packet(
-                    raw_bytes=bytes(scapy_pkt),
+                    raw_bytes=raw_bytes,
                     timestamp=scapy_pkt.time
                 )
+
+                # Ethernet
+                ethernet_decoder = self.decoders[0]
+
+                if ethernet_decoder.supports(raw_bytes):
+                    ethernet = ethernet_decoder.decode(raw_bytes)
+                    pkt.add_layer(ethernet)
+
+                    next_protocol = ethernet.get_field("next_protocol")
+                    offset = ethernet.get_field("payload_offset")
+
+                    if offset is None:
+                        offset = 14
+
+                    payload = raw_bytes[offset:]
+
+                    # ARP
+                    if next_protocol == "ARP":
+                        arp_decoder = self.decoders[2]
+
+                        if arp_decoder.supports(payload):
+                            pkt.add_layer(arp_decoder.decode(payload))
+
+                    # IPv4
+                    elif next_protocol == "IPv4":
+                        ip_decoder = self.decoders[1]
+
+                        if ip_decoder.supports(payload):
+                            ip_layer = ip_decoder.decode(payload)
+                            pkt.add_layer(ip_layer)
+
+                            ip_offset = ip_layer.get_field("payload_offset")
+
+                            if ip_offset is None:
+                                ip_offset = 20
+
+                            transport_payload = payload[ip_offset:]
+
+                            transport_protocol = ip_layer.get_field("next_protocol")
+
+                            # TCP
+                            if transport_protocol == "TCP":
+                                tcp_decoder = self.decoders[3]
+
+                                if tcp_decoder.supports(transport_payload):
+                                    tcp_layer = tcp_decoder.decode(transport_payload)
+                                    pkt.add_layer(tcp_layer)
+
+                                    tcp_offset = tcp_layer.get_field("payload_offset")
+
+                                    if tcp_offset is None:
+                                        tcp_offset = 20
+
+                                    app_payload = transport_payload[tcp_offset:]
+
+                                    # HTTP
+                                    http_decoder = self.decoders[7]
+
+                                    if app_payload and http_decoder.supports(app_payload):
+                                        pkt.add_layer(http_decoder.decode(app_payload))
+
+                            # UDP
+                            elif transport_protocol == "UDP":
+                                udp_decoder = self.decoders[4]
+
+                                if udp_decoder.supports(transport_payload):
+                                    udp_layer = udp_decoder.decode(transport_payload)
+                                    pkt.add_layer(udp_layer)
+
+                                    udp_offset = udp_layer.get_field("payload_offset")
+
+                                    if udp_offset is None:
+                                        udp_offset = 8
+
+                                    app_payload = transport_payload[udp_offset:]
+
+                                    # DNS
+                                    dns_decoder = self.decoders[6]
+
+                                    if app_payload and dns_decoder.supports(app_payload):
+                                        pkt.add_layer(dns_decoder.decode(app_payload))
+
+                            # ICMP
+                            elif transport_protocol == "ICMP":
+                                icmp_decoder = self.decoders[5]
+
+                                if icmp_decoder.supports(transport_payload):
+                                    pkt.add_layer(icmp_decoder.decode(transport_payload))
+
+                self.packet_received.emit(pkt)
                 # Optionally decode packet here or leave to GUI
                 # For now, we emit raw packet; decoding can be done in GUI
                 self.packet_received.emit(pkt)

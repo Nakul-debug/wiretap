@@ -14,9 +14,9 @@ class DecodedLayer:
         """Add a field to the layer."""
         self.fields[name] = value
 
-    def get_field(self, name: str) -> Any:
+    def get_field(self, name: str, default: Any = None) -> Any:
         """Get a field by name."""
-        return self.fields.get(name)
+        return self.fields.get(name, default)
 
 
 class BaseDecoder(ABC):
