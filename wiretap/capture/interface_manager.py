@@ -3,7 +3,6 @@ from typing import List, Dict, Optional
 from scapy.arch import get_if_list, get_if_addr
 from scapy.error import Scapy_Exception
 
-
 class InterfaceManager:
     """Manages network interface discovery and selection."""
 

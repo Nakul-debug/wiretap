@@ -7,9 +7,7 @@ from scapy.all import AsyncSniffer, Packet as ScapyPacket
 from wiretap.models.packet import Packet
 from wiretap.decoders.base import DecodedLayer
 
-
 logger = logging.getLogger(__name__)
-
 
 class CaptureManager:
     """Manages live packet capture using Scapy."""

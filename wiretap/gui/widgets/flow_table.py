@@ -1,2 +1,0 @@
-"""Flow table widget."""
-pass

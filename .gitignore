@@ -1,4 +1,5 @@
 __pycache__/
+.pytest_cache/
 *.pyc
 venv/
 .venv/
@@ -9,3 +10,4 @@ venv/
 *.db
 *~
 *.pyc
+.claude

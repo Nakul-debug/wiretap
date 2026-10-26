@@ -1,13 +1,9 @@
-#!/usr/bin/env python3
-"""Entry point for wiretap - launches the GUI application."""
+"""Start Wiretap's local browser API."""
 
-import sys
-import os
+import uvicorn
 
-# Add the parent directory to the path so we can import wiretap package
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from wiretap.gui.main_window import main
+def main() -> None:
+    uvicorn.run("wiretap.api:app", host="127.0.0.1", port=8000, reload=True)
 
 if __name__ == "__main__":
     main()
