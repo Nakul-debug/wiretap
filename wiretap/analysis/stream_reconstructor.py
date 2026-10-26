@@ -1,2 +1,0 @@
-"""TCP stream reconstructor."""
-pass

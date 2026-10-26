@@ -11,3 +11,4 @@ venv/
 *~
 *.pyc
 .claude
+node_modules/

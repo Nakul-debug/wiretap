@@ -1,2 +1,0 @@
-"""Protocol helper functions."""
-pass

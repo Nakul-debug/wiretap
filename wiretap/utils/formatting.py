@@ -1,2 +1,0 @@
-"""Formatting utilities."""
-pass
