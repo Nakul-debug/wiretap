@@ -1,6 +1,6 @@
 """Local HTTP bridge between the Wiretap engine and the React application.
 
-Run with ``python -m uvicorn wiretap.api:app --reload``.  This module keeps the
+Run with ``python -m uvicorn backend.api:app --reload``.  This module keeps the
 capture engine in-process; it does not send captured traffic to a remote service.
 """
 

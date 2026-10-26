@@ -12,7 +12,7 @@ threats.
 
 Usage::
 
-    from wiretap.analysis import MLAnomalyDetector, ThreatAlert
+    from backend.analysis import MLAnomalyDetector, ThreatAlert
 
     detector = MLAnomalyDetector(contamination=0.05)
 

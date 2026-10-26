@@ -37,7 +37,7 @@ Then start the API and frontend in separate terminals.
 
 ```bash
 # Terminal 1 — from the repository root
-python -m wiretap
+python -m backend
 ```
 
 ```bash
